@@ -1,4 +1,6 @@
 import os
+from datetime import datetime
+
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.backends import default_backend
@@ -6,6 +8,7 @@ from cryptography.exceptions import InvalidKey
 
 
 def hkdf_derive(hash_algo, length, salt, info, input_key):
+    """Derive key using HKDF"""
     backend = default_backend()
     hkdf = HKDF(
         algorithm=hash_algo,
@@ -18,6 +21,7 @@ def hkdf_derive(hash_algo, length, salt, info, input_key):
 
 
 def hkdf_verify(hash_algo, length, salt, info, input_key, derived_key):
+    """Verify output of HKDF"""
     backend = default_backend()
     hkdf = HKDF(
         algorithm=hash_algo,
@@ -33,7 +37,8 @@ def hkdf_verify(hash_algo, length, salt, info, input_key, derived_key):
         return False
 
 
-if __name__ == "__main__":
+def run_example():
+    """Usage example"""
     hash_algo = hashes.SHA256()
     salt = os.urandom(16)
     info = b"hkdf-example"
@@ -57,3 +62,7 @@ if __name__ == "__main__":
         derived_key=derived_key,
     )
     print(f"result = {result}")
+
+
+if __name__ == "__main__":
+    run_example()
