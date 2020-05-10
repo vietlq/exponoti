@@ -108,7 +108,7 @@ def rolling_proximity_identifier_key() -> bytes:
     The Rolling Proximity Identifier Key (RPIK) is derived from the
     Temporary Exposure Key and is used in order to derive the
     Rolling Proximity Identifiers.
-    Generates RPIK once every given TEKRollingPeriod (1 day).
+    Derives a new value of RPIK once every given TEKRollingPeriod (1 day).
     """
     global _rolling_proximity_id_keys
     return _rolling_key_deriv(_rolling_proximity_id_keys, BYTES_RPIK_INFO)
@@ -136,6 +136,7 @@ def associated_encrypted_metadata_key() -> bytes:
     """
     The Associated Encrypted Metadata Keys are derived from the
     Temporary Exposure Keys in order to encrypt additional metadata.
+    Derives a new value of AEMK once every given TEKRollingPeriod (1 day).
     """
     global _associated_enc_metadata_keys
     return _rolling_key_deriv(_associated_enc_metadata_keys, BYTES_AEMK_INFO)
