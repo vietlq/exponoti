@@ -4,6 +4,7 @@ Exposure Notification.
 
 import os
 from datetime import datetime
+from collections import OrderedDict
 
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -17,6 +18,8 @@ is valid (in multiples of 10 minutes). In our protocol, TEKRollingPeriod
 is defined as 144, achieving a key validity of 24 hours.
 """
 TEK_ROLLING_PERIOD = 144
+
+_temporary_exposure_key = OrderedDict()
 
 
 def interval_number(time_at_key_gen: datetime) -> int:
@@ -33,8 +36,20 @@ def interval_number(time_at_key_gen: datetime) -> int:
 
 
 def interval_number_now() -> int:
-    """Retturns ENIntervalNumber of the present timestamp."""
+    """Returns ENIntervalNumber of the present timestamp."""
     return interval_number(datetime.utcnow())
+
+
+def temporary_exposure_key() -> bytes:
+    """
+    Generates Temporary Exposure Key once for each TEKRollingPeriod (day).
+    """
+    global _temporary_exposure_key
+    curr_interval_num = interval_number_now()
+    curr_interval_day = curr_interval_num // 144
+    if curr_interval_day not in _temporary_exposure_key:
+        _temporary_exposure_key[curr_interval_day] = os.urandom(16)
+    return _temporary_exposure_key[curr_interval_day]
 
 
 def hkdf_derive(hash_algo, length, salt, info, input_key) -> bytes:
