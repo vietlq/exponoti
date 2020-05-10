@@ -10,7 +10,7 @@ from setuptools import setup, find_packages
 with codecs.open('README.rst', 'r', 'utf-8') as fd:
     LONG_DESCRIPTION = fd.read()
 
-PKG_VERSION = "0.0.4"
+PKG_VERSION = "0.0.5"
 
 setup(
     name='exponot',

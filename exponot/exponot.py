@@ -36,16 +36,23 @@ ExposureInternals = namedtuple(
 
 
 class ExposureNotification:
+    """
+    Simple wrapper around exposure notification functions.
+    """
     def __init__(self):
         self._temporary_exposure_keys = OrderedDict()
 
     def get_temp_exposure_key(self):
+        """Get current temporary exposure key"""
         interval_number = interval_number_now()
         return temporary_exposure_key(
             self._temporary_exposure_keys, interval_number
         )
 
     def internals(self):
+        """
+        Get current interval number, temporary exposure key and derived keys.
+        """
         interval_number = interval_number_now()
         temp_exposure_key = self.get_temp_exposure_key()
         curr_rp_id_key = rolling_proximity_identifier_key(temp_exposure_key)
@@ -62,6 +69,10 @@ class ExposureNotification:
         )
 
     def encrypt(self, metadata):
+        """
+        Encrypt metadata.
+        """
+        # TODO: Consider keep AES CTR counter for the whole interval
         interval_number = interval_number_now()
         temp_exposure_key = self.get_temp_exposure_key()
         return associated_encrypted_metadata(
@@ -172,6 +183,8 @@ def associated_encrypted_metadata(
     curr_rpi_hex = hexlify(curr_rpi)
     curr_rpi_int = int(curr_rpi_hex, 16)
     counter = Counter.new(nbits=128, initial_value=curr_rpi_int)
-    # TODO: Should cipher created once every interval, not once per call?
+    # TODO: Should cipher be created once every interval, not once per call?
+    # Once per call creating will reset counter every time, will cause
+    # the same metadata will have the same output.
     cipher = AES.new(key=curr_aemk, mode=AES.MODE_CTR, counter=counter)
     return cipher.encrypt(metadata)
