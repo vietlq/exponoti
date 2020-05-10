@@ -4,19 +4,19 @@
 # Read: http://setuptools.readthedocs.io/en/latest/setuptools.html
 # Look for find_packages, packages, package_dir
 
-from setuptools import setup, find_packages
 import codecs
+from setuptools import setup, find_packages
 
-with codecs.open('README.md', 'r', 'utf-8') as fd:
-    long_description = fd.read()
+with codecs.open('README.rst', 'r', 'utf-8') as fd:
+    LONG_DESCRIPTION = fd.read()
 
-pkg_version = "0.0.2"
+PKG_VERSION = "0.0.3"
 
 setup(
     name='exponot',
-    version=pkg_version,
+    version=PKG_VERSION,
     description='Exposure Notification reference implementation',
-    long_description=long_description,
+    long_description=LONG_DESCRIPTION,
     long_description_content_type="text/markdown",
     author='Viet Le',
     author_email='vietlq85@gmail.com',
@@ -33,7 +33,6 @@ setup(
         'Operating System :: OS Independent',
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
