@@ -5,7 +5,7 @@ Exposure Notification reference implementation.
 import os
 import struct
 from datetime import datetime
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 from binascii import hexlify
 
 from Crypto.Cipher import AES
@@ -30,41 +30,46 @@ BYTES_MID_PAD = b"\x00\x00\x00\x00\x00\x00"
 BYTES_AEMK_INFO = "EN-AEMK".encode("utf-8")
 
 
+ExposureInternals = namedtuple(
+    "ExposureInternals", "interval_number,temp_exposure_key,rpik,rpid,aemk"
+)
+
+
 class ExposureNotification:
     def __init__(self):
         self._temporary_exposure_keys = OrderedDict()
 
     def get_temp_exposure_key(self):
-        curr_interval = interval_number_now()
+        interval_number = interval_number_now()
         return temporary_exposure_key(
-            self._temporary_exposure_keys, curr_interval
+            self._temporary_exposure_keys, interval_number
         )
 
     def internals(self):
-        curr_interval = interval_number_now()
+        interval_number = interval_number_now()
         temp_exposure_key = self.get_temp_exposure_key()
         curr_rp_id_key = rolling_proximity_identifier_key(temp_exposure_key)
         curr_rp_id = rolling_proximity_identifier(
-            curr_interval, temp_exposure_key
+            interval_number, temp_exposure_key
         )
         curr_aemk = associated_encrypted_metadata_key(temp_exposure_key)
-        return {
-            "exposure_noti_interval_number": curr_interval,
-            "temp_exposure_key": temp_exposure_key,
-            "rolling_proximity_id_key": curr_rp_id_key,
-            "rolling_proximity_id": curr_rp_id,
-            "assoc_encrypted_metadata_key": curr_aemk,
-        }
+        return ExposureInternals(
+            interval_number=interval_number,
+            temp_exposure_key=temp_exposure_key,
+            rpik=curr_rp_id_key,
+            rpid=curr_rp_id,
+            aemk=curr_aemk,
+        )
 
     def encrypt(self, metadata):
-        curr_interval = interval_number_now()
+        interval_number = interval_number_now()
         temp_exposure_key = self.get_temp_exposure_key()
         return associated_encrypted_metadata(
-            curr_interval, temp_exposure_key, metadata
+            interval_number, temp_exposure_key, metadata
         )
 
 
-def interval_number(time_at_key_gen: datetime) -> int:
+def interval_number_from(time_at_key_gen: datetime) -> int:
     """
     Implements the function ENIntervalNumber in specification.
     """
@@ -79,15 +84,15 @@ def interval_number_now() -> int:
     shared between all devices participating in the protocol. These time
     windows are derived from timestamps in Unix Epoch Time.
     """
-    return interval_number(datetime.utcnow())
+    return interval_number_from(datetime.utcnow())
 
 
-def temporary_exposure_key(key_manager, curr_interval) -> bytes:
+def temporary_exposure_key(key_manager, interval_number) -> bytes:
     """
     Generates Temporary Exposure Key once for each TEKRollingPeriod (day).
     Generation is done once a day and calculation is amortized.
     """
-    curr_interval_period = curr_interval // TEK_ROLLING_PERIOD
+    curr_interval_period = interval_number // TEK_ROLLING_PERIOD
 
     if curr_interval_period not in key_manager:
         key_manager[curr_interval_period] = os.urandom(16)
@@ -125,7 +130,7 @@ def rolling_proximity_identifier_key(temp_exposure_key: bytes) -> bytes:
 
 
 def rolling_proximity_identifier(
-    curr_interval: int, temp_exposure_key: bytes
+    interval_number: int, temp_exposure_key: bytes
 ) -> bytes:
     """
     Rolling Proximity Identifiers are privacy-preserving identifiers that are
@@ -136,7 +141,9 @@ def rolling_proximity_identifier(
     value.
     """
     curr_rpik = rolling_proximity_identifier_key(temp_exposure_key)
-    padded_data = BYTES_RPI + BYTES_MID_PAD + struct.pack("<I", curr_interval)
+    padded_data = (
+        BYTES_RPI + BYTES_MID_PAD + struct.pack("<I", interval_number)
+    )
     cipher = AES.new(key=curr_rpik, mode=AES.MODE_ECB)
     return cipher.encrypt(padded_data)
 
@@ -151,7 +158,7 @@ def associated_encrypted_metadata_key(temp_exposure_key: bytes) -> bytes:
 
 
 def associated_encrypted_metadata(
-    curr_interval: int, temp_exposure_key: bytes, metadata: bytes
+    interval_number: int, temp_exposure_key: bytes, metadata: bytes
 ) -> bytes:
     """
     The Associated Encrypted Metadata is data encrypted along with the
@@ -161,9 +168,10 @@ def associated_encrypted_metadata(
     metadata are broadcast over Bluetooth Low Energy wireless technology.
     """
     curr_aemk = associated_encrypted_metadata_key(temp_exposure_key)
-    curr_rpi = rolling_proximity_identifier(curr_interval, temp_exposure_key)
+    curr_rpi = rolling_proximity_identifier(interval_number, temp_exposure_key)
     curr_rpi_hex = hexlify(curr_rpi)
     curr_rpi_int = int(curr_rpi_hex, 16)
     counter = Counter.new(nbits=128, initial_value=curr_rpi_int)
+    # TODO: Should cipher created once every interval, not once per call?
     cipher = AES.new(key=curr_aemk, mode=AES.MODE_CTR, counter=counter)
     return cipher.encrypt(metadata)
