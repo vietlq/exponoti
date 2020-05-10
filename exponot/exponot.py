@@ -29,12 +29,42 @@ BYTES_RPI = "EN-RPI".encode("utf-8")
 BYTES_MID_PAD = b"\x00\x00\x00\x00\x00\x00"
 BYTES_AEMK_INFO = "EN-AEMK".encode("utf-8")
 
-_temporary_exposure_keys = OrderedDict()
-_rolling_proximity_id_keys = OrderedDict()
-_associated_enc_metadata_keys = OrderedDict()
+
+class ExposureNotification:
+    def __init__(self):
+        self._temporary_exposure_keys = OrderedDict()
+
+    def get_temp_exposure_key(self):
+        curr_interval = interval_number_now()
+        return temporary_exposure_key(
+            self._temporary_exposure_keys, curr_interval
+        )
+
+    def internals(self):
+        curr_interval = interval_number_now()
+        temp_exposure_key = self.get_temp_exposure_key()
+        curr_rp_id_key = rolling_proximity_identifier_key(temp_exposure_key)
+        curr_rp_id = rolling_proximity_identifier(
+            curr_interval, temp_exposure_key
+        )
+        curr_aemk = associated_encrypted_metadata_key(temp_exposure_key)
+        return {
+            "exposure_noti_interval_number": curr_interval,
+            "temp_exposure_key": temp_exposure_key,
+            "rolling_proximity_id_key": curr_rp_id_key,
+            "rolling_proximity_id": curr_rp_id,
+            "assoc_encrypted_metadata_key": curr_aemk,
+        }
+
+    def encrypt(self, metadata):
+        curr_interval = interval_number_now()
+        temp_exposure_key = self.get_temp_exposure_key()
+        return associated_encrypted_metadata(
+            curr_interval, temp_exposure_key, metadata
+        )
 
 
-def _interval_number_impl(time_at_key_gen: datetime) -> int:
+def interval_number(time_at_key_gen: datetime) -> int:
     """
     Implements the function ENIntervalNumber in specification.
     """
@@ -42,79 +72,61 @@ def _interval_number_impl(time_at_key_gen: datetime) -> int:
     return timestamp // SECONDS_PER_INTERVAL
 
 
-def interval_number() -> int:
+def interval_number_now() -> int:
     """
     ENIntervalNumber of the present timestamp.
     This function provides a number for each 10 minute time window that’s
     shared between all devices participating in the protocol. These time
     windows are derived from timestamps in Unix Epoch Time.
     """
-    return _interval_number_impl(datetime.utcnow())
+    return interval_number(datetime.utcnow())
 
 
-def temporary_exposure_key() -> bytes:
+def temporary_exposure_key(key_manager, curr_interval) -> bytes:
     """
     Generates Temporary Exposure Key once for each TEKRollingPeriod (day).
     Generation is done once a day and calculation is amortized.
     """
-    global _temporary_exposure_keys
-    curr_interval_num = interval_number()
-    curr_interval_day = curr_interval_num // TEK_ROLLING_PERIOD
+    curr_interval_period = curr_interval // TEK_ROLLING_PERIOD
 
-    if curr_interval_day not in _temporary_exposure_keys:
-        _temporary_exposure_keys[curr_interval_day] = os.urandom(16)
+    if curr_interval_period not in key_manager:
+        key_manager[curr_interval_period] = os.urandom(16)
         temp_dict = OrderedDict(
             {
-                prev_key: _temporary_exposure_keys[prev_key]
-                for prev_key in _temporary_exposure_keys
-                if curr_interval_day - prev_key <= TEK_LIFETIME
+                prev_key: key_manager[prev_key]
+                for prev_key in key_manager
+                if curr_interval_period - prev_key <= TEK_LIFETIME
             }
         )
-        _temporary_exposure_keys = temp_dict
+        key_manager = temp_dict
 
-    return _temporary_exposure_keys[curr_interval_day]
+    return key_manager[curr_interval_period]
 
 
-def _rolling_key_deriv(container, info) -> bytes:
+def derive_rolling_key(temp_exposure_key: bytes, info: bytes) -> bytes:
     """Implements HKDF with caching"""
-    curr_interval_num = interval_number()
-    curr_interval_day = curr_interval_num // TEK_ROLLING_PERIOD
-
-    if curr_interval_day not in container:
-        curr_key = hkdf_derive(
-            input_key=temporary_exposure_key(),
-            salt=b"",
-            info=info,
-            length=16,
-            hash_algo=hashes.SHA256(),
-        )
-        container[curr_interval_day] = curr_key
-
-        # Clean up old keys
-        temp_dict = OrderedDict(
-            {
-                prev_key: container[prev_key]
-                for prev_key in container
-                if curr_interval_day - prev_key <= TEK_LIFETIME
-            }
-        )
-        container = temp_dict
-
-    return container[curr_interval_day]
+    return hkdf_derive(
+        input_key=temp_exposure_key,
+        salt=b"",
+        info=info,
+        length=16,
+        hash_algo=hashes.SHA256(),
+    )
 
 
-def rolling_proximity_identifier_key() -> bytes:
+def rolling_proximity_identifier_key(temp_exposure_key: bytes) -> bytes:
     """
     The Rolling Proximity Identifier Key (RPIK) is derived from the
     Temporary Exposure Key and is used in order to derive the
     Rolling Proximity Identifiers.
     Derives a new value of RPIK once every given TEKRollingPeriod (1 day).
     """
-    global _rolling_proximity_id_keys
-    return _rolling_key_deriv(_rolling_proximity_id_keys, BYTES_RPIK_INFO)
+    return derive_rolling_key(temp_exposure_key, BYTES_RPIK_INFO)
 
 
-def rolling_proximity_identifier() -> bytes:
+def rolling_proximity_identifier(
+    curr_interval: int, temp_exposure_key: bytes
+) -> bytes:
     """
     Rolling Proximity Identifiers are privacy-preserving identifiers that are
     broadcast in Bluetooth payloads. Each time the Bluetooth Low Energy MAC
@@ -123,26 +135,24 @@ def rolling_proximity_identifier() -> bytes:
     ENIntervalNumber is encoded as a 32-bit (uint32_t) unsigned little-endian
     value.
     """
-    curr_interval_num = interval_number()
-    curr_rpik = rolling_proximity_identifier_key()
-    padded_data = (
-        BYTES_RPI + BYTES_MID_PAD + struct.pack("<I", curr_interval_num)
-    )
+    curr_rpik = rolling_proximity_identifier_key(temp_exposure_key)
+    padded_data = BYTES_RPI + BYTES_MID_PAD + struct.pack("<I", curr_interval)
     cipher = AES.new(key=curr_rpik, mode=AES.MODE_ECB)
     return cipher.encrypt(padded_data)
 
 
-def associated_encrypted_metadata_key() -> bytes:
+def associated_encrypted_metadata_key(temp_exposure_key: bytes) -> bytes:
     """
     The Associated Encrypted Metadata Keys are derived from the
     Temporary Exposure Keys in order to encrypt additional metadata.
     Derives a new value of AEMK once every given TEKRollingPeriod (1 day).
     """
-    global _associated_enc_metadata_keys
-    return _rolling_key_deriv(_associated_enc_metadata_keys, BYTES_AEMK_INFO)
+    return derive_rolling_key(temp_exposure_key, BYTES_AEMK_INFO)
 
 
-def associated_encrypted_metadata(metadata: bytes) -> bytes:
+def associated_encrypted_metadata(
+    curr_interval: int, temp_exposure_key: bytes, metadata: bytes
+) -> bytes:
     """
     The Associated Encrypted Metadata is data encrypted along with the
     Rolling Proximity Identifier, and can only be decrypted later if the user
@@ -150,8 +160,8 @@ def associated_encrypted_metadata(metadata: bytes) -> bytes:
     The 16-byte Rolling Proximity Identifier and the appended encrypted
     metadata are broadcast over Bluetooth Low Energy wireless technology.
     """
-    curr_aemk = associated_encrypted_metadata_key()
-    curr_rpi = rolling_proximity_identifier()
+    curr_aemk = associated_encrypted_metadata_key(temp_exposure_key)
+    curr_rpi = rolling_proximity_identifier(curr_interval, temp_exposure_key)
     curr_rpi_hex = hexlify(curr_rpi)
     curr_rpi_int = int(curr_rpi_hex, 16)
     counter = Counter.new(nbits=128, initial_value=curr_rpi_int)
