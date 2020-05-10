@@ -8,6 +8,7 @@ from exponot.exponot import (
     ExposureNotification,
     interval_number_from,
     ExposureInternals,
+    Verifier,
 )
 from exponot.utils import hkdf_derive, hkdf_verify
 
@@ -42,3 +43,9 @@ def test_exponot(exposure_internals):
     assert exposure_internals.aemk == associated_encrypted_metadata_key(
         exposure_internals.temp_exposure_key
     )
+
+
+def test_verifier():
+    verifier = Verifier()
+    verifier.add_external_rpi(b",\xfa\xb6\x8c?\xf1w\xc3!\xd5\xb8-h\xfe\xdf2")
+    assert verifier.was_exposed_to_key(b"\x97I\xa6\x8e\x0f\xae\xfd\xa5\xffV\x04\x11#\x05\x0cc")

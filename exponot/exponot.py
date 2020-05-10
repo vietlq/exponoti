@@ -4,7 +4,7 @@ Exposure Notification reference implementation.
 
 import os
 import struct
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import OrderedDict, namedtuple
 from binascii import hexlify
 
@@ -13,7 +13,7 @@ from Crypto.Util import Counter
 
 from cryptography.hazmat.primitives import hashes
 
-from .utils import hkdf_derive
+from .utils import hkdf_derive, mkdt
 
 
 """
@@ -35,10 +35,49 @@ ExposureInternals = namedtuple(
 )
 
 
+class Verifier:
+    """
+    Class to collect and verify if any of external Rolling Proximity
+    Identifiers match given external Temporary Exposure Keys that were
+    advertised as positive to Covid-19.
+    """
+
+    def __init__(self):
+        self._external_rp_ids = OrderedDict()
+
+    def add_external_rpi(self, external_rpi):
+        """
+        Collect external Rolling Proximity Identifier.
+        """
+        assert len(external_rpi) == 16
+        if external_rpi not in self._external_rp_ids:
+            self._external_rp_ids[external_rpi] = datetime.now()
+
+    def was_exposed_to_key(self, temp_exposure_key):
+        """
+        Check if the user was exposed to the owner of given exposure key.
+        """
+        now_dt = datetime.now()
+        interval_number = interval_number_now()
+        past_dt = now_dt - timedelta(days=15)
+        past_interval_num = interval_number_from(past_dt)
+
+        while past_interval_num <= interval_number:
+            past_rp_id = rolling_proximity_identifier(
+                past_interval_num, temp_exposure_key
+            )
+            if past_rp_id in self._external_rp_ids:
+                return True
+            past_interval_num += 1
+
+        return False
+
+
 class ExposureNotification:
     """
     Simple wrapper around exposure notification functions.
     """
+
     def __init__(self):
         self._temporary_exposure_keys = OrderedDict()
 
