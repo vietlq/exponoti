@@ -10,16 +10,15 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.backends import default_backend
 from cryptography.exceptions import InvalidKey
-
-
 """
 The TEKRollingPeriod is the duration for which a Temporary Exposure Key
 is valid (in multiples of 10 minutes). In our protocol, TEKRollingPeriod
 is defined as 144, achieving a key validity of 24 hours.
 """
 TEK_ROLLING_PERIOD = 144
+TEK_LIFETIME = 14
 
-_temporary_exposure_key = OrderedDict()
+_temporary_exposure_keys = OrderedDict()
 
 
 def interval_number(time_at_key_gen: datetime) -> int:
@@ -43,13 +42,22 @@ def interval_number_now() -> int:
 def temporary_exposure_key() -> bytes:
     """
     Generates Temporary Exposure Key once for each TEKRollingPeriod (day).
+    Generation is done once a day and calculation is amortized.
     """
-    global _temporary_exposure_key
+    global _temporary_exposure_keys
     curr_interval_num = interval_number_now()
-    curr_interval_day = curr_interval_num // 144
-    if curr_interval_day not in _temporary_exposure_key:
-        _temporary_exposure_key[curr_interval_day] = os.urandom(16)
-    return _temporary_exposure_key[curr_interval_day]
+    curr_interval_day = curr_interval_num // TEK_ROLLING_PERIOD
+
+    if curr_interval_day not in _temporary_exposure_keys:
+        _temporary_exposure_keys[curr_interval_day] = os.urandom(16)
+        temp_dict = OrderedDict({
+            prev_key: _temporary_exposure_keys[prev_key]
+            for prev_key in _temporary_exposure_keys
+            if curr_interval_day - prev_key <= TEK_LIFETIME
+        })
+        _temporary_exposure_keys = temp_dict
+
+    return _temporary_exposure_keys[curr_interval_day]
 
 
 def hkdf_derive(hash_algo, length, salt, info, input_key) -> bytes:
