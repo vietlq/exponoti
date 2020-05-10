@@ -1,6 +1,7 @@
 .PHONY: help build publish_test publish_live
 
 # https://packaging.python.org/tutorials/packaging-projects/
+# https://realpython.com/pypi-publish-python-package/
 
 help:
 	@echo "Usage:"

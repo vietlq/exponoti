@@ -7,16 +7,17 @@
 from setuptools import setup, find_packages
 import codecs
 
-with codecs.open('README.rst', 'r', 'utf-8') as fd:
+with codecs.open('README.md', 'r', 'utf-8') as fd:
     long_description = fd.read()
 
-pkg_version = "0.0.1"
+pkg_version = "0.0.2"
 
 setup(
     name='exponot',
     version=pkg_version,
     description='Exposure Notification reference implementation',
     long_description=long_description,
+    long_description_content_type="text/markdown",
     author='Viet Le',
     author_email='vietlq85@gmail.com',
     url='https://github.com/vietlq/exponot',
