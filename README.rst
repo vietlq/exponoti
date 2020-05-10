@@ -2,7 +2,7 @@
 exponot - Reference implementation of Apple/Google COVID-19 tracing API
 =======================================================================
 
-Exposure Notification based on docs of Apple/Google collaboration.
+Reference implementation of crytographic API of Exposure Notification system based on documents shared by Apple/Google.
 
 This reference implementation uses `pycryptodome <https://www.pycryptodome.org/en/latest/>`_ and `cryptography <https://cryptography.io/en/latest/>`_ libraries.
 
